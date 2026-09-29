@@ -1,14 +1,38 @@
 # Support Copilot
 
-Checks a customer message against `knowledge_base.json` (Russian, ₽) and returns a KB-grounded reply draft plus an upsell hint for the manager.
+Прототип для тестового задания: принимает обращение клиента, сверяется с короткой базой знаний (`knowledge_base.json`, на русском, цены в ₽) и возвращает два блока: черновик вежливого ответа клиенту и подсказку по допродаже для менеджера (в духе бокового окна диалога AmoCRM).
 
-- **Run:** `go run .` then open http://localhost:8080 (Go 1.22+, no dependencies). Optional: `cp .env.example .env`.
-- **LLM:** any OpenAI-compatible endpoint. Default is local Ollama: `ollama pull qwen2.5:7b && ollama serve`.
-- **Env vars:** `LLM_BASE_URL` (default `http://localhost:11434/v1`), `LLM_API_KEY` (optional Bearer token), `MODEL` (default `qwen2.5:7b`).
-- **Language:** the UI and manager hint are in Russian. The customer reply follows the customer's language (Russian by default).
-- **MOCK mode:** if the endpoint is unreachable at startup, the server answers with keyword-based canned Russian responses so the demo never breaks. The mode shows in the startup log and the UI header.
-- **`POST /api/handle`:** `{"history":[{"role":"customer|manager","text":"..."}],"message":"..."}` → `reply, upsell_hint, intent, stage, confidence, sources, needs_manager`.
-- **`GET /api/info`:** mode, model and KB topic names (used by the UI).
-- **`POST /api/amocrm/webhook`:** `{"lead_id":1,"contact":{"id":7,"name":"Анна"},"message":{"text":"...","created_at":1759140000}}` → an AmoCRM `common` note for the lead card.
-- **Mocked:** AmoCRM is not called. A real integration would use an AmoCRM widget or webhook plus the notes API (`POST /api/v4/leads/notes`).
-- **Eval:** with the server running, `go run ./cmd/eval` runs `testcases.json` (deterministic checks) and prints a pass/fail table and score.
+## Запуск
+
+- `go run .`, затем открыть http://localhost:8080 (Go 1.22+, без внешних зависимостей). Необязательно: `cp .env.example .env`.
+- LLM: любой OpenAI-совместимый endpoint. По умолчанию локальная Ollama: `ollama pull qwen2.5:7b && ollama serve`.
+- Переменные окружения: `LLM_BASE_URL` (по умолчанию `http://localhost:11434/v1`), `LLM_API_KEY` (необязательный Bearer-токен), `MODEL` (по умолчанию `qwen2.5:7b`).
+- MOCK-режим: если endpoint недоступен при старте, сервер отвечает заготовленными ответами по ключевым словам, чтобы демо не ломалось. Режим виден в логе запуска и в шапке интерфейса. Результаты eval в MOCK-режиме ничего не значат.
+
+## Эндпоинты
+
+- `POST /api/handle`: `{"history":[{"role":"customer|manager","text":"..."}],"message":"..."}` → `reply, upsell_hint, intent, stage, confidence, sources, needs_manager`.
+- `GET /api/info`: режим, модель и названия тем базы знаний (использует интерфейс).
+- `POST /api/amocrm/webhook`: `{"lead_id":1,"contact":{"id":7,"name":"Анна"},"message":{"text":"...","created_at":1759140000}}` → примечание типа `common` для карточки сделки.
+
+Язык: интерфейс и подсказка менеджеру всегда на русском, ответ клиенту идёт на языке его сообщения.
+
+## Что замокано
+
+AmoCRM не вызывается. В реальной интеграции это виджет или вебхук AmoCRM плюс API примечаний (`POST /api/v4/leads/notes`).
+
+## Eval
+
+При запущенном сервере: `go run ./cmd/eval`. Прогоняет `testcases.json` (детерминированные проверки, без LLM-судьи) и печатает таблицу pass/fail и итоговый счёт.
+
+Последний прогон на `qwen2.5:7b` (Ollama, temperature 0): N/10 (подставь свой счёт). Eval проверяет флаги, числа, язык и запрещённые фразы, а не полную правдивость ответа.
+
+## Известные ограничения
+
+- Модель 7B иногда утверждает то, чего нет в базе (например, «у нас нет запчастей»), или путает пороги скидок. Сервер такое находит не всегда.
+- Серверные защиты поднимают флаг `needs_manager`, но не переписывают текст ответа: помеченный черновик может содержать неверное обещание. Менеджер видит янтарную панель и обязан его проверить.
+- Определение инъекций это эвристика по ключевым словам, а не полная защита. Защита от неизвестных сущностей видит только слова с заглавной буквы (город с маленькой буквы пропускается) и помечает любое латинское название, так как база на русском.
+- Проверка «нет выдуманных чисел» работает по совпадению подстроки с базой.
+- В подсказках менеджеру бывают допродажи вне базы и редкие искажённые слова. Подсказки, начинающиеся с «Без допродажи:», обрезаются до одного предложения.
+- Кейс `kazan_regression` проходит через флаг менеджера и не проверяет, что в ответе упомянут СДЭК.
+- Интерфейс проверен только вручную в браузере, автотестов на него нет.
