@@ -1,0 +1,4 @@
+.env
+/support-copilot
+/eval
+*.exe
